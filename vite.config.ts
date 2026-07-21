@@ -7,5 +7,12 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
+    proxy: {
+      // Encaminha chamadas de API para o backend (classificação por IA)
+      '/api': {
+        target: 'http://localhost:8787',
+        changeOrigin: true,
+      },
+    },
   },
 })

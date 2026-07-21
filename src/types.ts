@@ -21,6 +21,8 @@ export interface Email {
   folder: Folder
   /** categoria de origem, usada para organização e ícones */
   category: EmailCategory
+  /** ids de etiquetas personalizadas atribuídas (manual ou por regra) */
+  labels: string[]
 }
 
 export type EmailCategory =
@@ -37,4 +39,30 @@ export interface ScoredEmail extends Email {
   relevance: Relevance
   /** motivos legíveis que explicam a pontuação */
   reasons: string[]
+  /** origem da análise: heurística local ou IA (Claude) */
+  source: 'local' | 'ai'
+  /** resumo em uma frase gerado pela IA (quando disponível) */
+  summary?: string
+}
+
+/** Uma etiqueta personalizada para organização. */
+export interface Label {
+  id: string
+  name: string
+  color: string
+}
+
+export type RuleField = 'from' | 'subject' | 'body' | 'category'
+export type RuleAction = 'label' | 'folder' | 'star'
+
+/** Regra de organização automática: se `field` contém `value`, aplica a ação. */
+export interface Rule {
+  id: string
+  name: string
+  field: RuleField
+  value: string
+  action: RuleAction
+  /** id da etiqueta (action=label) ou pasta (action=folder) */
+  target: string
+  enabled: boolean
 }

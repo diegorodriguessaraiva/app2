@@ -1,5 +1,5 @@
 import { RELEVANCE_META } from '../relevance'
-import type { ScoredEmail } from '../types'
+import type { Label, ScoredEmail } from '../types'
 
 const AVATAR_COLORS = [
   '#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#00C7BE',
@@ -33,12 +33,14 @@ function relativeTime(iso: string): string {
 
 interface Props {
   email: ScoredEmail
+  labels: Label[]
   onOpen: () => void
   onToggleStar: (e: React.MouseEvent) => void
 }
 
-export function EmailRow({ email, onOpen, onToggleStar }: Props) {
+export function EmailRow({ email, labels, onOpen, onToggleStar }: Props) {
   const meta = RELEVANCE_META[email.relevance]
+  const emailLabels = labels.filter((l) => email.labels.includes(l.id))
   return (
     <div className="row" onClick={onOpen}>
       <div className={`unread-dot ${email.read ? 'hidden' : ''}`} />
@@ -60,6 +62,17 @@ export function EmailRow({ email, onOpen, onToggleStar }: Props) {
             {meta.label}
             <span className="score">· {email.score}</span>
           </span>
+          {email.source === 'ai' && <span className="ai-tag">IA</span>}
+          {emailLabels.map((l) => (
+            <span
+              key={l.id}
+              className="label-chip sm"
+              style={{ background: `${l.color}22`, color: l.color }}
+            >
+              <span className="dot" style={{ background: l.color }} />
+              {l.name}
+            </span>
+          ))}
           {email.vip && <span className="vip-tag">VIP</span>}
           {email.hasAttachment && <span className="mini-icon">📎</span>}
           <button

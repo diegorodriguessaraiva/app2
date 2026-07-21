@@ -528,3 +528,151 @@ button {
 }
 .stat .num { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; }
 .stat .lbl { font-size: 11px; color: var(--label-secondary); font-weight: 600; margin-top: 2px; }
+
+/* ---------- Tags & label chips ---------- */
+.ai-tag {
+  font-size: 10px;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(135deg, #AF52DE, #5856D6);
+  border-radius: 5px;
+  padding: 1px 5px;
+  letter-spacing: 0.03em;
+}
+.label-chip {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.label-chip .dot { width: 7px; height: 7px; border-radius: 50%; }
+.label-chip.sm { font-size: 10px; padding: 2px 7px; }
+.label-chip.toggle { border: none; cursor: pointer; transition: transform 0.1s ease; }
+.label-chip.toggle:active { transform: scale(0.94); }
+
+.ai-summary {
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--label);
+  background: var(--fill);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 0 0 12px;
+}
+
+.label-picker { margin-top: 22px; }
+.label-picker-row { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* ---------- Toggle switch ---------- */
+.toggle {
+  width: 51px;
+  height: 31px;
+  border-radius: 16px;
+  background: var(--fill-strong);
+  position: relative;
+  transition: background 0.2s ease;
+  flex-shrink: 0;
+}
+.toggle.on { background: var(--green); }
+.toggle .knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.toggle.on .knob { transform: translateX(20px); }
+
+/* ---------- Settings ---------- */
+.settings-section {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--label-secondary);
+  padding: 20px 4px 8px;
+}
+.settings-card {
+  background: var(--bg-elev);
+  border-radius: 14px;
+  padding: 4px 14px;
+  box-shadow: var(--shadow);
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 0.5px solid var(--separator);
+}
+.settings-row:last-child { border-bottom: none; }
+.sr-title { font-size: 16px; font-weight: 600; }
+.sr-sub { font-size: 13px; color: var(--label-secondary); margin-top: 2px; }
+.sr-hint { font-size: 13px; color: var(--label-secondary); padding: 10px 0 12px; line-height: 1.4; }
+
+.btn-primary, .btn-secondary {
+  font-size: 15px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 10px;
+  white-space: nowrap;
+  transition: transform 0.1s ease, opacity 0.2s ease;
+}
+.btn-primary { background: var(--blue); color: #fff; }
+.btn-secondary { background: var(--fill); color: var(--blue); }
+.btn-primary:active, .btn-secondary:active { transform: scale(0.96); }
+.btn-primary:disabled { opacity: 0.4; }
+.btn-primary.full, .btn-secondary.full { width: 100%; padding: 12px; }
+
+.link-danger { color: var(--red); font-size: 14px; font-weight: 500; }
+
+.field {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: var(--fill);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 16px;
+  color: var(--label);
+  width: 100%;
+}
+.field::placeholder { color: var(--label-secondary); }
+
+.add-row { display: flex; gap: 8px; padding: 12px 0 8px; }
+.color-row { display: flex; gap: 8px; padding-bottom: 12px; flex-wrap: wrap; }
+.color-dot {
+  width: 26px; height: 26px; border-radius: 50%;
+  transition: transform 0.1s ease;
+}
+.color-dot.sel { outline: 2px solid var(--label); outline-offset: 2px; }
+.color-dot:active { transform: scale(0.9); }
+
+.rule-builder {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 0 4px;
+  margin-top: 6px;
+  border-top: 0.5px solid var(--separator);
+}
+.rb-line { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--label-secondary); flex-wrap: wrap; }
+.rule-builder select {
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--label);
+  background: var(--fill);
+  border: none;
+  border-radius: 9px;
+  padding: 7px 10px;
+  outline: none;
+}

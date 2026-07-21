@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { RELEVANCE_META } from '../relevance'
-import type { ScoredEmail } from '../types'
+import type { Label, ScoredEmail } from '../types'
 
 const AVATAR_COLORS = [
   '#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#00C7BE',
@@ -19,20 +19,24 @@ function initials(name: string): string {
 
 interface Props {
   email: ScoredEmail
+  labels: Label[]
   onClose: () => void
   onToggleStar: () => void
   onToggleRead: () => void
   onArchive: () => void
   onTrash: () => void
+  onToggleLabel: (labelId: string) => void
 }
 
 export function EmailDetail({
   email,
+  labels,
   onClose,
   onToggleStar,
   onToggleRead,
   onArchive,
   onTrash,
+  onToggleLabel,
 }: Props) {
   const meta = RELEVANCE_META[email.relevance]
 
@@ -82,7 +86,9 @@ export function EmailDetail({
           {/* Card de análise de relevância */}
           <div className="reason-card">
             <div className="reason-head">
-              <span className="rh-title">Análise de relevância</span>
+              <span className="rh-title">
+                Análise de relevância {email.source === 'ai' && <span className="ai-tag">IA</span>}
+              </span>
               <span className="score-pill" style={{ background: meta.color }}>
                 {meta.label} · {email.score}/100
               </span>
@@ -93,6 +99,7 @@ export function EmailDetail({
                 style={{ width: `${email.score}%`, background: meta.color }}
               />
             </div>
+            {email.summary && <p className="ai-summary">{email.summary}</p>}
             <ul className="reasons">
               {email.reasons.length > 0 ? (
                 email.reasons.map((r, i) => (
@@ -111,6 +118,36 @@ export function EmailDetail({
           </div>
 
           <div className="sheet-text">{email.body}</div>
+
+          {labels.length > 0 && (
+            <div className="label-picker">
+              <div className="rh-title" style={{ marginBottom: 8 }}>
+                Etiquetas
+              </div>
+              <div className="label-picker-row">
+                {labels.map((l) => {
+                  const on = email.labels.includes(l.id)
+                  return (
+                    <button
+                      key={l.id}
+                      className="label-chip toggle"
+                      style={{
+                        background: on ? l.color : `${l.color}18`,
+                        color: on ? '#fff' : l.color,
+                      }}
+                      onClick={() => onToggleLabel(l.id)}
+                    >
+                      <span
+                        className="dot"
+                        style={{ background: on ? '#fff' : l.color }}
+                      />
+                      {l.name}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="sheet-actions">

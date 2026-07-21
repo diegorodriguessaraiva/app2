@@ -109,7 +109,7 @@ export function scoreEmail(email: Email): ScoredEmail {
   // Normaliza para 0–100
   score = Math.max(0, Math.min(100, Math.round(score)))
 
-  return { ...email, score, relevance: toRelevance(score), reasons }
+  return { ...email, score, relevance: toRelevance(score), reasons, source: 'local' }
 }
 
 export function toRelevance(score: number): Relevance {

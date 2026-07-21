@@ -1,23 +1,40 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { SEED_EMAILS } from './data'
 import { scoreAndSort, RELEVANCE_META } from './relevance'
-import type { Email, Folder, Relevance } from './types'
+import type { Email, Folder, Label, Relevance, Rule, ScoredEmail } from './types'
 import { EmailRow } from './components/EmailRow'
 import { EmailDetail } from './components/EmailDetail'
+import { SettingsSheet } from './components/SettingsSheet'
+import {
+  applyRulesToAll,
+  loadLabels,
+  loadRules,
+  saveLabels,
+  saveRules,
+} from './rules'
+import { checkAi, classifyWithAI, type AiHealth, type AiResult } from './ai'
+import {
+  connectGmail,
+  disconnectGmail,
+  fetchInbox,
+  gmailConfigured,
+  isGmailConnected,
+} from './gmail'
 
 type RelevanceFilter = 'todos' | Relevance
 type Tab = Folder | 'starred'
 
-const STORAGE_KEY = 'triagem-emails-v1'
+const STORAGE_KEY = 'triagem-emails-v2'
 
 function loadEmails(): Email[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) return JSON.parse(raw) as Email[]
   } catch {
-    /* ignora e usa o seed */
+    /* usa o seed */
   }
-  return SEED_EMAILS
+  // Primeira execução: já aplica as regras padrão ao seed (mostra etiquetas).
+  return applyRulesToAll(SEED_EMAILS, loadRules())
 }
 
 const TAB_META: Record<Tab, { label: string; icon: string }> = {
@@ -35,21 +52,129 @@ export default function App() {
   const [openId, setOpenId] = useState<string | null>(null)
   const [notifyOn, setNotifyOn] = useState(false)
   const [showBanner, setShowBanner] = useState(true)
+  const [showSettings, setShowSettings] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const toastTimer = useRef<number | undefined>(undefined)
 
-  // Persiste alterações
+  // Organização
+  const [labels, setLabels] = useState<Label[]>(loadLabels)
+  const [rules, setRules] = useState<Rule[]>(loadRules)
+
+  // IA
+  const [aiHealth, setAiHealth] = useState<AiHealth | null>(null)
+  const [aiEnabled, setAiEnabled] = useState(false)
+  const [aiResults, setAiResults] = useState<Map<string, AiResult>>(new Map())
+  const [aiLoading, setAiLoading] = useState(false)
+
+  // Gmail
+  const [gmailConnected, setGmailConnected] = useState(isGmailConnected())
+  const [gmailBusy, setGmailBusy] = useState(false)
+
+  // Persistência
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(emails))
   }, [emails])
-
-  // Pontua + ordena de forma decrescente (memoizado)
-  const scored = useMemo(() => scoreAndSort(emails), [emails])
+  useEffect(() => saveLabels(labels), [labels])
+  useEffect(() => saveRules(rules), [rules])
+  useEffect(() => {
+    checkAi().then(setAiHealth)
+  }, [])
 
   const flashToast = (msg: string) => {
     setToast(msg)
     window.clearTimeout(toastTimer.current)
-    toastTimer.current = window.setTimeout(() => setToast(null), 1900)
+    toastTimer.current = window.setTimeout(() => setToast(null), 2200)
+  }
+
+  // ---------- Pontuação (local ou IA) + ordenação decrescente ----------
+  const scored: ScoredEmail[] = useMemo(() => {
+    const base = scoreAndSort(emails)
+    if (!aiEnabled || aiResults.size === 0) return base
+    const merged = base.map((e) => {
+      const r = aiResults.get(e.id)
+      return r
+        ? {
+            ...e,
+            score: r.score,
+            relevance: r.relevance,
+            reasons: r.reasons,
+            summary: r.summary,
+            source: 'ai' as const,
+          }
+        : e
+    })
+    merged.sort(
+      (a, b) => b.score - a.score || +new Date(b.date) - +new Date(a.date),
+    )
+    return merged
+  }, [emails, aiEnabled, aiResults])
+
+  // ---------- IA ----------
+  const runAi = async (list: Email[]) => {
+    if (!aiHealth?.ai) {
+      flashToast('IA indisponível: configure ANTHROPIC_API_KEY no servidor')
+      return
+    }
+    setAiLoading(true)
+    try {
+      const map = await classifyWithAI(list.filter((e) => e.folder === 'inbox'))
+      setAiResults(map)
+      flashToast('🧠 E-mails classificados pela IA')
+    } catch (e) {
+      flashToast(e instanceof Error ? e.message : 'Falha na classificação por IA')
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
+  const toggleAi = (v: boolean) => {
+    setAiEnabled(v)
+    if (v && aiResults.size === 0) runAi(emails)
+  }
+
+  // ---------- Gmail ----------
+  const refreshGmail = async () => {
+    setGmailBusy(true)
+    try {
+      const raw = await fetchInbox(20)
+      const organized = applyRulesToAll(raw, rules)
+      setEmails(organized)
+      setGmailConnected(true)
+      flashToast(`📧 ${organized.length} e-mails carregados`)
+      if (aiEnabled) runAi(organized)
+    } catch (e) {
+      flashToast(e instanceof Error ? e.message : 'Erro ao ler o Gmail')
+    } finally {
+      setGmailBusy(false)
+    }
+  }
+
+  const onConnectGmail = async () => {
+    setGmailBusy(true)
+    try {
+      await connectGmail()
+      await refreshGmail()
+    } catch (e) {
+      flashToast(e instanceof Error ? e.message : 'Falha ao conectar o Gmail')
+      setGmailBusy(false)
+    }
+  }
+
+  const onDisconnectGmail = () => {
+    disconnectGmail()
+    setGmailConnected(false)
+    flashToast('Gmail desconectado')
+  }
+
+  const resetInbox = () => {
+    setEmails(applyRulesToAll(SEED_EMAILS, rules))
+    setAiResults(new Map())
+    flashToast('Caixa de exemplo restaurada')
+  }
+
+  const applyRulesNow = () => {
+    setEmails((prev) => applyRulesToAll(prev, rules))
+    flashToast('⚡ Regras aplicadas')
   }
 
   // ---------- Ações de organização ----------
@@ -76,8 +201,20 @@ export default function App() {
     setOpenId(null)
     flashToast(label)
   }
+  const toggleLabel = (id: string, labelId: string) => {
+    setEmails((prev) =>
+      prev.map((e) => {
+        if (e.id !== id) return e
+        const has = e.labels.includes(labelId)
+        return {
+          ...e,
+          labels: has ? e.labels.filter((l) => l !== labelId) : [...e.labels, labelId],
+        }
+      }),
+    )
+  }
 
-  // ---------- Notificações (browser) ----------
+  // ---------- Notificações ----------
   const highPriorityUnread = useMemo(
     () => scored.filter((e) => e.folder === 'inbox' && e.relevance === 'alta' && !e.read),
     [scored],
@@ -109,15 +246,12 @@ export default function App() {
     }
   }
 
-  // ---------- Filtragem da lista visível ----------
+  // ---------- Filtragem ----------
   const visible = useMemo(() => {
     let list = scored
-    // pasta / aba
     if (tab === 'starred') list = list.filter((e) => e.starred && e.folder !== 'trash')
     else list = list.filter((e) => e.folder === tab)
-    // relevância
     if (filter !== 'todos') list = list.filter((e) => e.relevance === filter)
-    // busca
     const q = query.trim().toLowerCase()
     if (q) {
       list = list.filter(
@@ -130,7 +264,6 @@ export default function App() {
     return list
   }, [scored, tab, filter, query])
 
-  // Contadores por relevância na pasta atual (para o segmented control)
   const folderList = useMemo(() => {
     if (tab === 'starred') return scored.filter((e) => e.starred && e.folder !== 'trash')
     return scored.filter((e) => e.folder === tab)
@@ -165,18 +298,42 @@ export default function App() {
       <header className="header">
         <div className="header-top">
           <h1>{TAB_META[tab].label}</h1>
-          <button
-            className={`icon-btn ${notifyOn ? 'on' : ''}`}
-            onClick={enableNotifications}
-            title="Ativar notificações"
-            aria-label="Ativar notificações"
-          >
-            {notifyOn ? '🔔' : '🔕'}
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {aiEnabled && aiHealth?.ai && (
+              <button
+                className="icon-btn"
+                onClick={() => runAi(emails)}
+                disabled={aiLoading}
+                title="Reanalisar com IA"
+                aria-label="Reanalisar com IA"
+              >
+                {aiLoading ? '…' : '🧠'}
+              </button>
+            )}
+            <button
+              className={`icon-btn ${notifyOn ? 'on' : ''}`}
+              onClick={enableNotifications}
+              title="Ativar notificações"
+              aria-label="Ativar notificações"
+            >
+              {notifyOn ? '🔔' : '🔕'}
+            </button>
+            <button
+              className="icon-btn"
+              onClick={() => setShowSettings(true)}
+              title="Configurações"
+              aria-label="Configurações"
+            >
+              ⚙️
+            </button>
+          </div>
         </div>
         <div className="header-subtitle">
-          Triagem inteligente por relevância · {folderList.length}{' '}
-          {folderList.length === 1 ? 'mensagem' : 'mensagens'}
+          {aiLoading
+            ? 'Analisando com IA…'
+            : `Triagem ${aiEnabled && aiHealth?.ai ? 'por IA' : 'inteligente'} · ${folderList.length} ${
+                folderList.length === 1 ? 'mensagem' : 'mensagens'
+              }`}
         </div>
 
         <div className="search">
@@ -203,7 +360,6 @@ export default function App() {
         </div>
       </header>
 
-      {/* Resumo de estatísticas */}
       {tab === 'inbox' && (
         <div className="stats">
           <div className="stat">
@@ -227,7 +383,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Banner de alerta para e-mails de alta relevância não lidos */}
       {tab === 'inbox' && showBanner && highPriorityUnread.length > 0 && (
         <div className="alert-banner" role="alert">
           <span className="bell">🔔</span>
@@ -242,25 +397,18 @@ export default function App() {
               {highPriorityUnread[0].from} · {highPriorityUnread[0].subject}
             </div>
           </div>
-          <button
-            className="alert-close"
-            onClick={() => setShowBanner(false)}
-            aria-label="Dispensar"
-          >
+          <button className="alert-close" onClick={() => setShowBanner(false)} aria-label="Dispensar">
             ✕
           </button>
         </div>
       )}
 
-      {/* Lista de e-mails */}
       {visible.length === 0 ? (
         <div className="empty">
           <div className="big">📭</div>
           <h3>Nada por aqui</h3>
           <p>
-            {query
-              ? 'Nenhum e-mail corresponde à busca.'
-              : 'Nenhuma mensagem nesta seção.'}
+            {query ? 'Nenhum e-mail corresponde à busca.' : 'Nenhuma mensagem nesta seção.'}
           </p>
         </div>
       ) : (
@@ -276,6 +424,7 @@ export default function App() {
               <EmailRow
                 key={e.id}
                 email={e}
+                labels={labels}
                 onOpen={() => openEmail(e.id)}
                 onToggleStar={(ev) => toggleStar(e.id, ev)}
               />
@@ -284,7 +433,6 @@ export default function App() {
         </>
       )}
 
-      {/* Tab bar inferior */}
       <nav className="tabbar">
         {(['inbox', 'starred', 'archived', 'trash'] as Tab[]).map((t) => (
           <button
@@ -307,20 +455,40 @@ export default function App() {
         ))}
       </nav>
 
-      {/* Sheet de detalhe */}
       {openEmailObj && (
         <EmailDetail
           email={openEmailObj}
+          labels={labels}
           onClose={() => setOpenId(null)}
           onToggleStar={() => toggleStar(openEmailObj.id)}
           onToggleRead={() => {
             toggleRead(openEmailObj.id)
             setOpenId(null)
           }}
-          onArchive={() =>
-            moveTo(openEmailObj.id, 'archived', '🗄️ E-mail arquivado')
-          }
+          onArchive={() => moveTo(openEmailObj.id, 'archived', '🗄️ E-mail arquivado')}
           onTrash={() => moveTo(openEmailObj.id, 'trash', '🗑️ Movido para a lixeira')}
+          onToggleLabel={(labelId) => toggleLabel(openEmailObj.id, labelId)}
+        />
+      )}
+
+      {showSettings && (
+        <SettingsSheet
+          onClose={() => setShowSettings(false)}
+          aiHealth={aiHealth}
+          aiEnabled={aiEnabled}
+          onToggleAi={toggleAi}
+          gmailConfigured={gmailConfigured}
+          gmailConnected={gmailConnected}
+          gmailBusy={gmailBusy}
+          onConnectGmail={onConnectGmail}
+          onDisconnectGmail={onDisconnectGmail}
+          onRefreshGmail={refreshGmail}
+          onResetInbox={resetInbox}
+          labels={labels}
+          onLabelsChange={setLabels}
+          rules={rules}
+          onRulesChange={setRules}
+          onApplyRules={applyRulesNow}
         />
       )}
 

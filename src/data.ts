@@ -8,7 +8,7 @@ const h = (hours: number) => new Date(now - hours * 3600 * 1000).toISOString()
  * conta conectada (IMAP / Gmail API / Microsoft Graph). Aqui simulam uma
  * caixa de entrada variada para demonstrar a triagem por relevância.
  */
-export const SEED_EMAILS: Email[] = [
+const RAW: Omit<Email, 'labels'>[] = [
   {
     id: 'e1',
     from: 'Banco Central',
@@ -202,3 +202,6 @@ export const SEED_EMAILS: Email[] = [
     category: 'atualizacoes',
   },
 ]
+
+/** E-mails de exemplo já com o campo de etiquetas inicializado. */
+export const SEED_EMAILS: Email[] = RAW.map((e) => ({ ...e, labels: [] }))

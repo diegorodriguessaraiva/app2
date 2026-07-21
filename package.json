@@ -1,15 +1,20 @@
 {
   "name": "triagem-email-ios",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
-  "description": "App de triagem de e-mails por relevância (Alta / Média / Baixa) com alertas, notificações e organização — design iOS.",
+  "description": "App de triagem de e-mails por relevância (Alta / Média / Baixa) com Gmail real, classificação por IA (Claude), etiquetas e regras — design iOS.",
   "scripts": {
     "dev": "vite",
+    "server": "node --env-file-if-exists=.env server/index.mjs",
+    "dev:all": "concurrently -k -n web,api -c cyan,magenta \"npm:dev\" \"npm:server\"",
     "build": "tsc -b && vite build",
+    "start": "node --env-file-if-exists=.env server/index.mjs",
     "preview": "vite preview --host"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.112.4",
+    "express": "^4.21.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
@@ -17,6 +22,7 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
     "typescript": "^5.6.3",
     "vite": "^5.4.11"
   }
