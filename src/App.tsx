@@ -5,6 +5,8 @@ import type { Email, Folder, Label, Relevance, Rule, ScoredEmail } from './types
 import { EmailRow } from './components/EmailRow'
 import { EmailDetail } from './components/EmailDetail'
 import { SettingsSheet } from './components/SettingsSheet'
+import { LockScreen } from './components/LockScreen'
+import { isUnlocked, lockNow, pinEnabled, setPin, setPinEnabled } from './pin'
 import {
   applyRulesToAll,
   loadLabels,
@@ -17,7 +19,7 @@ import { classifyEmails, loadModel, webgpuSupported, type LoadProgress } from '.
 import {
   connectGmail,
   disconnectGmail,
-  fetchInbox,
+  fetchInboxPage,
   gmailConfigured,
   isGmailConnected,
 } from './gmail'
@@ -54,6 +56,8 @@ export default function App() {
   const [notifyOn, setNotifyOn] = useState(false)
   const [showBanner, setShowBanner] = useState(true)
   const [showSettings, setShowSettings] = useState(false)
+  const [unlocked, setUnlocked] = useState(isUnlocked())
+  const [pinOn, setPinOn] = useState(pinEnabled())
   const [toast, setToast] = useState<string | null>(null)
   const toastTimer = useRef<number | undefined>(undefined)
 
@@ -77,6 +81,7 @@ export default function App() {
     const v = Number(localStorage.getItem('triagem-mailcount'))
     return v === 50 || v === 100 || v === 20 ? v : 50
   })
+  const [gmailPageToken, setGmailPageToken] = useState<string | null>(null)
 
   // Persistência
   useEffect(() => {
@@ -159,14 +164,35 @@ export default function App() {
   const refreshGmail = async (count = mailCount) => {
     setGmailBusy(true)
     try {
-      const raw = await fetchInbox(count)
+      const { emails: raw, nextPageToken } = await fetchInboxPage(count)
       const organized = applyRulesToAll(raw, rules)
       setEmails(organized)
+      setGmailPageToken(nextPageToken)
       setGmailConnected(true)
       flashToast(`📧 ${organized.length} e-mails carregados`)
       if (aiEnabled) runAi(organized)
     } catch (e) {
       flashToast(e instanceof Error ? e.message : 'Erro ao ler o Gmail')
+    } finally {
+      setGmailBusy(false)
+    }
+  }
+
+  const loadMoreGmail = async () => {
+    if (!gmailPageToken || gmailBusy) return
+    setGmailBusy(true)
+    try {
+      const { emails: raw, nextPageToken } = await fetchInboxPage(mailCount, gmailPageToken)
+      const organizedNew = applyRulesToAll(raw, rules)
+      setEmails((prev) => {
+        const seen = new Set(prev.map((e) => e.id))
+        return [...prev, ...organizedNew.filter((e) => !seen.has(e.id))]
+      })
+      setGmailPageToken(nextPageToken)
+      flashToast(`➕ Mais ${organizedNew.length} e-mails`)
+      if (aiEnabled) runAi(organizedNew)
+    } catch (e) {
+      flashToast(e instanceof Error ? e.message : 'Erro ao carregar mais')
     } finally {
       setGmailBusy(false)
     }
@@ -186,6 +212,7 @@ export default function App() {
   const onDisconnectGmail = () => {
     disconnectGmail()
     setGmailConnected(false)
+    setGmailPageToken(null)
     flashToast('Gmail desconectado')
   }
 
@@ -198,12 +225,29 @@ export default function App() {
   const resetInbox = () => {
     setEmails(applyRulesToAll(SEED_EMAILS, rules))
     setAiResults(new Map())
+    setGmailPageToken(null)
     flashToast('Caixa de exemplo restaurada')
   }
 
   const applyRulesNow = () => {
     setEmails((prev) => applyRulesToAll(prev, rules))
     flashToast('⚡ Regras aplicadas')
+  }
+
+  // ---------- PIN de acesso ----------
+  const togglePin = (v: boolean) => {
+    setPinEnabled(v)
+    setPinOn(v)
+    flashToast(v ? '🔒 Bloqueio por PIN ativado' : 'Bloqueio por PIN desativado')
+  }
+  const changePin = async (pin: string) => {
+    await setPin(pin)
+    flashToast('PIN alterado com sucesso')
+  }
+  const handleLockNow = () => {
+    lockNow()
+    setShowSettings(false)
+    setUnlocked(false)
   }
 
   // ---------- Ações de organização ----------
@@ -321,6 +365,8 @@ export default function App() {
     { key: 'media', label: 'Média', color: RELEVANCE_META.media.color, count: counts.media },
     { key: 'baixa', label: 'Baixa', color: RELEVANCE_META.baixa.color, count: counts.baixa },
   ]
+
+  if (!unlocked) return <LockScreen onUnlock={() => setUnlocked(true)} />
 
   return (
     <div className="app">
@@ -461,6 +507,11 @@ export default function App() {
               />
             ))}
           </div>
+          {tab === 'inbox' && gmailConnected && gmailPageToken && (
+            <button className="load-more" onClick={loadMoreGmail} disabled={gmailBusy}>
+              {gmailBusy ? 'Carregando…' : `Carregar mais ${mailCount} e-mails`}
+            </button>
+          )}
         </>
       )}
 
@@ -524,6 +575,10 @@ export default function App() {
           rules={rules}
           onRulesChange={setRules}
           onApplyRules={applyRulesNow}
+          pinOn={pinOn}
+          onTogglePin={togglePin}
+          onChangePin={changePin}
+          onLockNow={handleLockNow}
         />
       )}
 

@@ -321,6 +321,22 @@ button {
 .mini-icon { font-size: 13px; color: var(--label-secondary); }
 .star-on { color: var(--orange); }
 
+.load-more {
+  display: block;
+  width: calc(100% - 32px);
+  margin: 14px 16px 0;
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--bg-elev);
+  color: var(--blue);
+  font-size: 16px;
+  font-weight: 600;
+  box-shadow: var(--shadow);
+  transition: transform 0.1s ease, opacity 0.2s ease;
+}
+.load-more:active { transform: scale(0.98); }
+.load-more:disabled { opacity: 0.5; }
+
 /* ---------- Empty state ---------- */
 .empty {
   text-align: center;
@@ -511,6 +527,68 @@ button {
   from { opacity: 0; transform: translate(-50%, 10px); }
   to { opacity: 1; transform: translate(-50%, 0); }
 }
+
+/* ---------- Lock screen ---------- */
+.lock {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: var(--bg);
+  display: grid;
+  place-items: center;
+  padding: calc(var(--safe-top) + 20px) 20px calc(var(--safe-bottom) + 20px);
+}
+.lock-inner {
+  width: 100%;
+  max-width: 300px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.lock-icon { font-size: 40px; margin-bottom: 14px; }
+.lock-title { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
+.lock-sub { font-size: 14px; color: var(--label-secondary); margin-top: 4px; }
+
+.pin-dots {
+  display: flex;
+  gap: 18px;
+  margin: 28px 0 34px;
+}
+.pin-dots.err { animation: shake 0.45s; }
+.pin-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1.5px solid var(--label-secondary);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.pin-dot.on { background: var(--blue); border-color: var(--blue); }
+.pin-dots.err .pin-dot.on { background: var(--red); border-color: var(--red); }
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-9px); }
+  40%, 80% { transform: translateX(9px); }
+}
+
+.keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+.key {
+  width: 74px;
+  height: 74px;
+  border-radius: 50%;
+  font-size: 30px;
+  font-weight: 400;
+  background: var(--fill);
+  color: var(--label);
+  display: grid;
+  place-items: center;
+  transition: background 0.12s ease, transform 0.1s ease;
+}
+.key:active { background: var(--fill-strong); transform: scale(0.94); }
+.key.del { background: transparent; font-size: 24px; }
 
 /* Stat summary chips under header */
 .stats {

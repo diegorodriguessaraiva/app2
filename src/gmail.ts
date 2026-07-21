@@ -145,11 +145,17 @@ function extractEmail(from: string): string {
   return m ? m[0] : from
 }
 
+export interface InboxPage {
+  emails: Email[]
+  /** token para carregar a próxima página; null quando não há mais */
+  nextPageToken: string | null
+}
+
 /**
- * Busca os e-mails mais recentes da caixa de entrada e os converte para o
- * formato interno `Email`. `max` limita quantas mensagens completas carregar.
+ * Busca uma página da caixa de entrada e converte para o formato `Email`.
+ * `max` = quantas mensagens nesta página; `pageToken` = continuação (paginação).
  */
-export async function fetchInbox(max = 20): Promise<Email[]> {
+export async function fetchInboxPage(max = 20, pageToken?: string): Promise<InboxPage> {
   if (!accessToken) throw new Error('Gmail não conectado.')
 
   // Descobre o e-mail do usuário (para detectar mensagens direcionadas).
@@ -164,9 +170,10 @@ export async function fetchInbox(max = 20): Promise<Email[]> {
     }
   }
 
-  const list = await api<{ messages?: { id: string }[] }>(
-    `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${max}&labelIds=INBOX`,
-  )
+  const url =
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${max}&labelIds=INBOX` +
+    (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '')
+  const list = await api<{ messages?: { id: string }[]; nextPageToken?: string }>(url)
   const ids = (list.messages ?? []).map((m) => m.id)
 
   const messages = await Promise.all(
@@ -177,7 +184,7 @@ export async function fetchInbox(max = 20): Promise<Email[]> {
     ),
   )
 
-  return messages
+  const emails = messages
     .filter((m): m is GmailMessage => m !== null)
     .map((m) => {
       const headers = m.payload?.headers
@@ -211,4 +218,6 @@ export async function fetchInbox(max = 20): Promise<Email[]> {
       }
       return email
     })
+
+  return { emails, nextPageToken: list.nextPageToken ?? null }
 }

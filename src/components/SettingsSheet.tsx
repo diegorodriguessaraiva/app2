@@ -26,6 +26,11 @@ interface Props {
   rules: Rule[]
   onRulesChange: (rules: Rule[]) => void
   onApplyRules: () => void
+  // Segurança
+  pinOn: boolean
+  onTogglePin: (v: boolean) => void
+  onChangePin: (pin: string) => void
+  onLockNow: () => void
 }
 
 const FIELD_LABEL: Record<RuleField, string> = {
@@ -74,7 +79,13 @@ export function SettingsSheet(props: Props) {
     rules,
     onRulesChange,
     onApplyRules,
+    pinOn,
+    onTogglePin,
+    onChangePin,
+    onLockNow,
   } = props
+
+  const [newPin, setNewPin] = useState('')
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -361,6 +372,51 @@ export function SettingsSheet(props: Props) {
             <button className="btn-secondary full" onClick={onApplyRules} style={{ marginTop: 10 }}>
               ⚡ Aplicar regras agora
             </button>
+          </div>
+
+          {/* ---------- Segurança ---------- */}
+          <div className="settings-section">Segurança</div>
+          <div className="settings-card">
+            <div className="settings-row">
+              <div>
+                <div className="sr-title">🔒 Bloqueio por PIN</div>
+                <div className="sr-sub">Pede um PIN para abrir o app</div>
+              </div>
+              <Toggle on={pinOn} onChange={onTogglePin} />
+            </div>
+            {pinOn && (
+              <>
+                <div className="add-row">
+                  <input
+                    className="field"
+                    type="tel"
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="Novo PIN (6 dígitos)"
+                    value={newPin}
+                    onChange={(e) => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  />
+                  <button
+                    className="btn-primary"
+                    disabled={newPin.length !== 6}
+                    onClick={() => {
+                      onChangePin(newPin)
+                      setNewPin('')
+                    }}
+                  >
+                    Salvar
+                  </button>
+                </div>
+                <button className="btn-secondary full" onClick={onLockNow} style={{ marginTop: 4 }}>
+                  Bloquear agora
+                </button>
+              </>
+            )}
+            <div className="sr-hint">
+              O app pede este PIN para abrir. É um obstáculo para acesso casual —
+              num site que roda no navegador, não substitui a segurança da sua
+              conta Google (ative a verificação em duas etapas).
+            </div>
           </div>
         </div>
       </div>
