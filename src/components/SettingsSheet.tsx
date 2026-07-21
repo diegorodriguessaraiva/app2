@@ -18,6 +18,8 @@ interface Props {
   onDisconnectGmail: () => void
   onRefreshGmail: () => void
   onResetInbox: () => void
+  mailCount: number
+  onMailCountChange: (n: number) => void
   // Organização
   labels: Label[]
   onLabelsChange: (labels: Label[]) => void
@@ -65,6 +67,8 @@ export function SettingsSheet(props: Props) {
     onDisconnectGmail,
     onRefreshGmail,
     onResetInbox,
+    mailCount,
+    onMailCountChange,
     labels,
     onLabelsChange,
     rules,
@@ -173,6 +177,26 @@ export function SettingsSheet(props: Props) {
                 </button>
               </div>
             )}
+            <div className="settings-row">
+              <div>
+                <div className="sr-title" style={{ fontSize: 15 }}>
+                  E-mails a carregar
+                </div>
+                <div className="sr-sub">Mais e-mails = um pouco mais lento</div>
+              </div>
+              <div className="count-seg">
+                {[20, 50, 100].map((n) => (
+                  <button
+                    key={n}
+                    className={mailCount === n ? 'active' : ''}
+                    onClick={() => onMailCountChange(n)}
+                    disabled={gmailBusy}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="settings-row">
               <div className="sr-sub">Voltar aos e-mails de exemplo</div>
               <button className="btn-secondary" onClick={onResetInbox}>

@@ -73,6 +73,10 @@ export default function App() {
   // Gmail
   const [gmailConnected, setGmailConnected] = useState(isGmailConnected())
   const [gmailBusy, setGmailBusy] = useState(false)
+  const [mailCount, setMailCount] = useState<number>(() => {
+    const v = Number(localStorage.getItem('triagem-mailcount'))
+    return v === 50 || v === 100 || v === 20 ? v : 50
+  })
 
   // Persistência
   useEffect(() => {
@@ -152,10 +156,10 @@ export default function App() {
   }
 
   // ---------- Gmail ----------
-  const refreshGmail = async () => {
+  const refreshGmail = async (count = mailCount) => {
     setGmailBusy(true)
     try {
-      const raw = await fetchInbox(20)
+      const raw = await fetchInbox(count)
       const organized = applyRulesToAll(raw, rules)
       setEmails(organized)
       setGmailConnected(true)
@@ -183,6 +187,12 @@ export default function App() {
     disconnectGmail()
     setGmailConnected(false)
     flashToast('Gmail desconectado')
+  }
+
+  const changeMailCount = (n: number) => {
+    setMailCount(n)
+    localStorage.setItem('triagem-mailcount', String(n))
+    if (gmailConnected) refreshGmail(n)
   }
 
   const resetInbox = () => {
@@ -505,8 +515,10 @@ export default function App() {
           gmailBusy={gmailBusy}
           onConnectGmail={onConnectGmail}
           onDisconnectGmail={onDisconnectGmail}
-          onRefreshGmail={refreshGmail}
+          onRefreshGmail={() => refreshGmail()}
           onResetInbox={resetInbox}
+          mailCount={mailCount}
+          onMailCountChange={changeMailCount}
           labels={labels}
           onLabelsChange={setLabels}
           rules={rules}
