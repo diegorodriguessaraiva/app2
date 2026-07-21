@@ -6,7 +6,7 @@ import Anthropic from '@anthropic-ai/sdk'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(__dirname, '..')
-const DIST = path.join(ROOT, 'dist')
+const DIST = path.join(ROOT, 'docs')
 
 const PORT = process.env.PORT || 8787
 const MODEL = process.env.CLAUDE_MODEL || 'claude-opus-4-8'

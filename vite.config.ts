@@ -7,6 +7,11 @@ export default defineConfig({
   // Caminhos relativos para os assets — evita página em branco quando o app
   // é servido a partir de um subcaminho (não da raiz do domínio).
   base: './',
+  build: {
+    // Sai em docs/ para publicar via GitHub Pages "Deploy from a branch".
+    outDir: 'docs',
+    emptyOutDir: true,
+  },
   server: {
     host: true,
     port: 5173,
