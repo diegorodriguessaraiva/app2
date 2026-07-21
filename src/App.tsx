@@ -12,7 +12,8 @@ import {
   saveLabels,
   saveRules,
 } from './rules'
-import { checkAi, classifyWithAI, type AiHealth, type AiResult } from './ai'
+import type { AiResult } from './ai'
+import { classifyEmails, loadModel, webgpuSupported, type LoadProgress } from './webllm'
 import {
   connectGmail,
   disconnectGmail,
@@ -60,11 +61,14 @@ export default function App() {
   const [labels, setLabels] = useState<Label[]>(loadLabels)
   const [rules, setRules] = useState<Rule[]>(loadRules)
 
-  // IA
-  const [aiHealth, setAiHealth] = useState<AiHealth | null>(null)
+  // IA local (WebLLM — roda no navegador via WebGPU)
+  const webgpuOk = useMemo(webgpuSupported, [])
   const [aiEnabled, setAiEnabled] = useState(false)
   const [aiResults, setAiResults] = useState<Map<string, AiResult>>(new Map())
   const [aiLoading, setAiLoading] = useState(false)
+  const [modelStatus, setModelStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
+  const [modelProgress, setModelProgress] = useState<LoadProgress>({ text: '', progress: 0 })
+  const engineRef = useRef<Awaited<ReturnType<typeof loadModel>> | null>(null)
 
   // Gmail
   const [gmailConnected, setGmailConnected] = useState(isGmailConnected())
@@ -76,9 +80,6 @@ export default function App() {
   }, [emails])
   useEffect(() => saveLabels(labels), [labels])
   useEffect(() => saveRules(rules), [rules])
-  useEffect(() => {
-    checkAi().then(setAiHealth)
-  }, [])
 
   const flashToast = (msg: string) => {
     setToast(msg)
@@ -109,19 +110,37 @@ export default function App() {
     return merged
   }, [emails, aiEnabled, aiResults])
 
-  // ---------- IA ----------
+  // ---------- IA local (WebLLM) ----------
+  const ensureModel = async () => {
+    if (engineRef.current) return engineRef.current
+    setModelStatus('loading')
+    try {
+      const engine = await loadModel(setModelProgress)
+      engineRef.current = engine
+      setModelStatus('ready')
+      return engine
+    } catch (e) {
+      setModelStatus('error')
+      throw e
+    }
+  }
+
   const runAi = async (list: Email[]) => {
-    if (!aiHealth?.ai) {
-      flashToast('IA indisponível: configure ANTHROPIC_API_KEY no servidor')
+    if (!webgpuOk) {
+      flashToast('Seu navegador não suporta WebGPU (use Chrome/Edge no desktop)')
       return
     }
     setAiLoading(true)
     try {
-      const map = await classifyWithAI(list.filter((e) => e.folder === 'inbox'))
-      setAiResults(map)
-      flashToast('🧠 E-mails classificados pela IA')
+      const engine = await ensureModel()
+      const inbox = list.filter((e) => e.folder === 'inbox')
+      // Atualiza a interface a cada e-mail analisado.
+      await classifyEmails(engine, inbox, (r) =>
+        setAiResults((prev) => new Map(prev).set(r.id, r)),
+      )
+      flashToast('🧠 E-mails analisados pela IA local')
     } catch (e) {
-      flashToast(e instanceof Error ? e.message : 'Falha na classificação por IA')
+      flashToast(e instanceof Error ? e.message : 'Falha ao rodar a IA local')
     } finally {
       setAiLoading(false)
     }
@@ -299,7 +318,7 @@ export default function App() {
         <div className="header-top">
           <h1>{TAB_META[tab].label}</h1>
           <div style={{ display: 'flex', gap: 8 }}>
-            {aiEnabled && aiHealth?.ai && (
+            {aiEnabled && webgpuOk && (
               <button
                 className="icon-btn"
                 onClick={() => runAi(emails)}
@@ -329,11 +348,13 @@ export default function App() {
           </div>
         </div>
         <div className="header-subtitle">
-          {aiLoading
-            ? 'Analisando com IA…'
-            : `Triagem ${aiEnabled && aiHealth?.ai ? 'por IA' : 'inteligente'} · ${folderList.length} ${
-                folderList.length === 1 ? 'mensagem' : 'mensagens'
-              }`}
+          {modelStatus === 'loading'
+            ? `Baixando modelo de IA… ${Math.round(modelProgress.progress * 100)}%`
+            : aiLoading
+              ? 'Analisando com IA…'
+              : `Triagem ${aiEnabled ? 'por IA' : 'inteligente'} · ${folderList.length} ${
+                  folderList.length === 1 ? 'mensagem' : 'mensagens'
+                }`}
         </div>
 
         <div className="search">
@@ -474,9 +495,11 @@ export default function App() {
       {showSettings && (
         <SettingsSheet
           onClose={() => setShowSettings(false)}
-          aiHealth={aiHealth}
+          webgpuOk={webgpuOk}
           aiEnabled={aiEnabled}
           onToggleAi={toggleAi}
+          modelStatus={modelStatus}
+          modelProgress={modelProgress.progress}
           gmailConfigured={gmailConfigured}
           gmailConnected={gmailConnected}
           gmailBusy={gmailBusy}

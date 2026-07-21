@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react'
 import type { Label, Rule, RuleAction, RuleField } from '../types'
 import { LABEL_COLORS } from '../rules'
-import type { AiHealth } from '../ai'
 
 interface Props {
   onClose: () => void
-  // IA
-  aiHealth: AiHealth | null
+  // IA local (WebLLM)
+  webgpuOk: boolean
   aiEnabled: boolean
   onToggleAi: (v: boolean) => void
+  modelStatus: 'idle' | 'loading' | 'ready' | 'error'
+  modelProgress: number
   // Gmail
   gmailConfigured: boolean
   gmailConnected: boolean
@@ -52,9 +53,11 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
 export function SettingsSheet(props: Props) {
   const {
     onClose,
-    aiHealth,
+    webgpuOk,
     aiEnabled,
     onToggleAi,
+    modelStatus,
+    modelProgress,
     gmailConfigured,
     gmailConnected,
     gmailBusy,
@@ -178,27 +181,47 @@ export function SettingsSheet(props: Props) {
             </div>
           </div>
 
-          {/* ---------- IA ---------- */}
+          {/* ---------- IA local (WebLLM) ---------- */}
           <div className="settings-section">Inteligência artificial</div>
           <div className="settings-card">
             <div className="settings-row">
               <div>
-                <div className="sr-title">🧠 Classificar com IA (Claude)</div>
+                <div className="sr-title">🧠 Classificar com IA (no navegador)</div>
                 <div className="sr-sub">
-                  {aiHealth?.ai
-                    ? `Modelo ${aiHealth.model}`
-                    : 'Backend sem ANTHROPIC_API_KEY — usando heurística local'}
+                  {!webgpuOk
+                    ? 'Este navegador não suporta WebGPU'
+                    : modelStatus === 'ready'
+                      ? 'Modelo carregado — roda no seu dispositivo'
+                      : modelStatus === 'loading'
+                        ? `Baixando modelo… ${Math.round(modelProgress * 100)}%`
+                        : 'Grátis e sem limite — roda no seu dispositivo'}
                 </div>
               </div>
-              <Toggle
-                on={aiEnabled && !!aiHealth?.ai}
-                onChange={(v) => onToggleAi(v)}
-              />
+              <Toggle on={aiEnabled && webgpuOk} onChange={(v) => onToggleAi(v)} />
             </div>
+            {modelStatus === 'loading' && (
+              <div className="meter" style={{ margin: '4px 0 12px' }}>
+                <div
+                  className="meter-fill"
+                  style={{ width: `${Math.round(modelProgress * 100)}%`, background: '#5856D6' }}
+                />
+              </div>
+            )}
             <div className="sr-hint">
-              Com a IA ligada, cada e-mail é lido e pontuado pela Claude, com um resumo
-              e motivos gerados automaticamente. Sem chave, a triagem local continua
-              funcionando.
+              {webgpuOk ? (
+                <>
+                  Um modelo de IA roda <b>inteiramente no seu navegador</b> — sem
+                  chave, sem servidor, grátis e sem limite de uso. No primeiro uso
+                  ele baixa o modelo (algumas centenas de MB, fica em cache). Depois,
+                  cada e-mail é pontuado com motivos e um resumo.
+                </>
+              ) : (
+                <>
+                  Para usar a IA local, abra o app no <b>Chrome ou Edge atualizados
+                  no computador</b> (requer WebGPU). Sem isso, a triagem local
+                  continua funcionando normalmente.
+                </>
+              )}
             </div>
           </div>
 
