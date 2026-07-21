@@ -1,0 +1,330 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { SEED_EMAILS } from './data'
+import { scoreAndSort, RELEVANCE_META } from './relevance'
+import type { Email, Folder, Relevance } from './types'
+import { EmailRow } from './components/EmailRow'
+import { EmailDetail } from './components/EmailDetail'
+
+type RelevanceFilter = 'todos' | Relevance
+type Tab = Folder | 'starred'
+
+const STORAGE_KEY = 'triagem-emails-v1'
+
+function loadEmails(): Email[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (raw) return JSON.parse(raw) as Email[]
+  } catch {
+    /* ignora e usa o seed */
+  }
+  return SEED_EMAILS
+}
+
+const TAB_META: Record<Tab, { label: string; icon: string }> = {
+  inbox: { label: 'Entrada', icon: '📥' },
+  starred: { label: 'Favoritos', icon: '⭐️' },
+  archived: { label: 'Arquivo', icon: '🗄️' },
+  trash: { label: 'Lixeira', icon: '🗑️' },
+}
+
+export default function App() {
+  const [emails, setEmails] = useState<Email[]>(loadEmails)
+  const [tab, setTab] = useState<Tab>('inbox')
+  const [filter, setFilter] = useState<RelevanceFilter>('todos')
+  const [query, setQuery] = useState('')
+  const [openId, setOpenId] = useState<string | null>(null)
+  const [notifyOn, setNotifyOn] = useState(false)
+  const [showBanner, setShowBanner] = useState(true)
+  const [toast, setToast] = useState<string | null>(null)
+  const toastTimer = useRef<number | undefined>(undefined)
+
+  // Persiste alterações
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(emails))
+  }, [emails])
+
+  // Pontua + ordena de forma decrescente (memoizado)
+  const scored = useMemo(() => scoreAndSort(emails), [emails])
+
+  const flashToast = (msg: string) => {
+    setToast(msg)
+    window.clearTimeout(toastTimer.current)
+    toastTimer.current = window.setTimeout(() => setToast(null), 1900)
+  }
+
+  // ---------- Ações de organização ----------
+  const patch = (id: string, changes: Partial<Email>) =>
+    setEmails((prev) => prev.map((e) => (e.id === id ? { ...e, ...changes } : e)))
+
+  const openEmail = (id: string) => {
+    patch(id, { read: true })
+    setOpenId(id)
+  }
+  const toggleStar = (id: string, e?: React.MouseEvent) => {
+    e?.stopPropagation()
+    const email = emails.find((x) => x.id === id)
+    patch(id, { starred: !email?.starred })
+    flashToast(email?.starred ? 'Removido dos favoritos' : '⭐️ Adicionado aos favoritos')
+  }
+  const toggleRead = (id: string) => {
+    const email = emails.find((x) => x.id === id)
+    patch(id, { read: !email?.read })
+    flashToast(email?.read ? 'Marcado como não lido' : 'Marcado como lido')
+  }
+  const moveTo = (id: string, folder: Folder, label: string) => {
+    patch(id, { folder })
+    setOpenId(null)
+    flashToast(label)
+  }
+
+  // ---------- Notificações (browser) ----------
+  const highPriorityUnread = useMemo(
+    () => scored.filter((e) => e.folder === 'inbox' && e.relevance === 'alta' && !e.read),
+    [scored],
+  )
+
+  const enableNotifications = async () => {
+    if (!('Notification' in window)) {
+      flashToast('Notificações não suportadas neste navegador')
+      return
+    }
+    if (notifyOn) {
+      setNotifyOn(false)
+      flashToast('Notificações desativadas')
+      return
+    }
+    const perm = await Notification.requestPermission()
+    if (perm === 'granted') {
+      setNotifyOn(true)
+      flashToast('🔔 Notificações ativadas')
+      if (highPriorityUnread.length > 0) {
+        const top = highPriorityUnread[0]
+        new Notification('Novo e-mail de alta relevância', {
+          body: `${top.from}: ${top.subject}`,
+          icon: '/mail.svg',
+        })
+      }
+    } else {
+      flashToast('Permissão de notificação negada')
+    }
+  }
+
+  // ---------- Filtragem da lista visível ----------
+  const visible = useMemo(() => {
+    let list = scored
+    // pasta / aba
+    if (tab === 'starred') list = list.filter((e) => e.starred && e.folder !== 'trash')
+    else list = list.filter((e) => e.folder === tab)
+    // relevância
+    if (filter !== 'todos') list = list.filter((e) => e.relevance === filter)
+    // busca
+    const q = query.trim().toLowerCase()
+    if (q) {
+      list = list.filter(
+        (e) =>
+          e.from.toLowerCase().includes(q) ||
+          e.subject.toLowerCase().includes(q) ||
+          e.body.toLowerCase().includes(q),
+      )
+    }
+    return list
+  }, [scored, tab, filter, query])
+
+  // Contadores por relevância na pasta atual (para o segmented control)
+  const folderList = useMemo(() => {
+    if (tab === 'starred') return scored.filter((e) => e.starred && e.folder !== 'trash')
+    return scored.filter((e) => e.folder === tab)
+  }, [scored, tab])
+
+  const counts = useMemo(
+    () => ({
+      todos: folderList.length,
+      alta: folderList.filter((e) => e.relevance === 'alta').length,
+      media: folderList.filter((e) => e.relevance === 'media').length,
+      baixa: folderList.filter((e) => e.relevance === 'baixa').length,
+    }),
+    [folderList],
+  )
+
+  const inboxUnread = useMemo(
+    () => scored.filter((e) => e.folder === 'inbox' && !e.read).length,
+    [scored],
+  )
+
+  const openEmailObj = openId ? scored.find((e) => e.id === openId) ?? null : null
+
+  const filterTabs: { key: RelevanceFilter; label: string; color?: string; count: number }[] = [
+    { key: 'todos', label: 'Todos', count: counts.todos },
+    { key: 'alta', label: 'Alta', color: RELEVANCE_META.alta.color, count: counts.alta },
+    { key: 'media', label: 'Média', color: RELEVANCE_META.media.color, count: counts.media },
+    { key: 'baixa', label: 'Baixa', color: RELEVANCE_META.baixa.color, count: counts.baixa },
+  ]
+
+  return (
+    <div className="app">
+      <header className="header">
+        <div className="header-top">
+          <h1>{TAB_META[tab].label}</h1>
+          <button
+            className={`icon-btn ${notifyOn ? 'on' : ''}`}
+            onClick={enableNotifications}
+            title="Ativar notificações"
+            aria-label="Ativar notificações"
+          >
+            {notifyOn ? '🔔' : '🔕'}
+          </button>
+        </div>
+        <div className="header-subtitle">
+          Triagem inteligente por relevância · {folderList.length}{' '}
+          {folderList.length === 1 ? 'mensagem' : 'mensagens'}
+        </div>
+
+        <div className="search">
+          <span className="mag">🔍</span>
+          <input
+            placeholder="Buscar remetente ou assunto"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+
+        <div className="segmented" role="tablist">
+          {filterTabs.map((f) => (
+            <button
+              key={f.key}
+              className={filter === f.key ? 'active' : ''}
+              onClick={() => setFilter(f.key)}
+            >
+              {f.color && <span className="seg-dot" style={{ background: f.color }} />}
+              {f.label}
+              <span className="seg-count">{f.count}</span>
+            </button>
+          ))}
+        </div>
+      </header>
+
+      {/* Resumo de estatísticas */}
+      {tab === 'inbox' && (
+        <div className="stats">
+          <div className="stat">
+            <div className="num" style={{ color: RELEVANCE_META.alta.color }}>
+              {counts.alta}
+            </div>
+            <div className="lbl">Alta</div>
+          </div>
+          <div className="stat">
+            <div className="num" style={{ color: RELEVANCE_META.media.color }}>
+              {counts.media}
+            </div>
+            <div className="lbl">Média</div>
+          </div>
+          <div className="stat">
+            <div className="num" style={{ color: RELEVANCE_META.baixa.color }}>
+              {counts.baixa}
+            </div>
+            <div className="lbl">Baixa</div>
+          </div>
+        </div>
+      )}
+
+      {/* Banner de alerta para e-mails de alta relevância não lidos */}
+      {tab === 'inbox' && showBanner && highPriorityUnread.length > 0 && (
+        <div className="alert-banner" role="alert">
+          <span className="bell">🔔</span>
+          <div className="alert-text">
+            <div className="alert-title">
+              {highPriorityUnread.length}{' '}
+              {highPriorityUnread.length === 1
+                ? 'e-mail de alta relevância'
+                : 'e-mails de alta relevância'}
+            </div>
+            <div className="alert-sub">
+              {highPriorityUnread[0].from} · {highPriorityUnread[0].subject}
+            </div>
+          </div>
+          <button
+            className="alert-close"
+            onClick={() => setShowBanner(false)}
+            aria-label="Dispensar"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Lista de e-mails */}
+      {visible.length === 0 ? (
+        <div className="empty">
+          <div className="big">📭</div>
+          <h3>Nada por aqui</h3>
+          <p>
+            {query
+              ? 'Nenhum e-mail corresponde à busca.'
+              : 'Nenhuma mensagem nesta seção.'}
+          </p>
+        </div>
+      ) : (
+        <>
+          {filter === 'todos' && tab === 'inbox' && (
+            <div className="section-title">
+              <span className="dot" style={{ background: RELEVANCE_META.alta.color }} />
+              Ordenado por relevância
+            </div>
+          )}
+          <div className="list">
+            {visible.map((e) => (
+              <EmailRow
+                key={e.id}
+                email={e}
+                onOpen={() => openEmail(e.id)}
+                onToggleStar={(ev) => toggleStar(e.id, ev)}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Tab bar inferior */}
+      <nav className="tabbar">
+        {(['inbox', 'starred', 'archived', 'trash'] as Tab[]).map((t) => (
+          <button
+            key={t}
+            className={`tab ${tab === t ? 'active' : ''}`}
+            onClick={() => {
+              setTab(t)
+              setFilter('todos')
+              setQuery('')
+            }}
+          >
+            <span className="tab-ico">
+              {TAB_META[t].icon}
+              {t === 'inbox' && inboxUnread > 0 && (
+                <span className="tab-badge">{inboxUnread}</span>
+              )}
+            </span>
+            {TAB_META[t].label}
+          </button>
+        ))}
+      </nav>
+
+      {/* Sheet de detalhe */}
+      {openEmailObj && (
+        <EmailDetail
+          email={openEmailObj}
+          onClose={() => setOpenId(null)}
+          onToggleStar={() => toggleStar(openEmailObj.id)}
+          onToggleRead={() => {
+            toggleRead(openEmailObj.id)
+            setOpenId(null)
+          }}
+          onArchive={() =>
+            moveTo(openEmailObj.id, 'archived', '🗄️ E-mail arquivado')
+          }
+          onTrash={() => moveTo(openEmailObj.id, 'trash', '🗑️ Movido para a lixeira')}
+        />
+      )}
+
+      {toast && <div className="toast">{toast}</div>}
+    </div>
+  )
+}
